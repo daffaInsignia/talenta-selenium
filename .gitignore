@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+attendance.db
+screenshots/
+cron.log
+.claude/
