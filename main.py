@@ -29,6 +29,8 @@ def load_config() -> dict[str, str]:
         config[key] = val
     config["CLOCK_IN_TIME"] = environ.get("CLOCK_IN_TIME", "09:00")
     config["CLOCK_OUT_TIME"] = environ.get("CLOCK_OUT_TIME", "18:00")
+    config["LATITUDE"] = environ.get("LATITUDE", "")
+    config["LONGITUDE"] = environ.get("LONGITUDE", "")
     return config
 
 
@@ -47,6 +49,21 @@ def create_driver() -> webdriver.Chrome:
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--window-size=1920,1080")
     return webdriver.Chrome(service=Service(), options=options)
+
+
+def set_geolocation(driver: webdriver.Chrome, lat: str, lng: str) -> None:
+    if not lat or not lng:
+        return
+    params = {
+        "latitude": float(lat),
+        "longitude": float(lng),
+        "accuracy": 100,
+    }
+    driver.execute_cdp_cmd("Emulation.setGeolocationOverride", params)
+    driver.execute_cdp_cmd("Browser.grantPermissions", {
+        "permissions": ["geolocation"],
+    })
+    print(f"[geo] Location set to {lat}, {lng}", flush=True)
 
 
 def dismiss_popups(driver: webdriver.Chrome) -> None:
@@ -133,6 +150,7 @@ def perform_attendance(action: str) -> bool:
     """Full flow: login -> navigate -> click clock button. Returns True if successful."""
     config = load_config()
     driver = create_driver()
+    set_geolocation(driver, config["LATITUDE"], config["LONGITUDE"])
     try:
         login(driver, config["TALENTA_EMAIL"], config["TALENTA_PASSWORD"])
         navigate_to_live_attendance(driver)
