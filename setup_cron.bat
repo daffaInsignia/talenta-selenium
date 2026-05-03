@@ -17,18 +17,18 @@ schtasks /delete /tn "TalentaClockOut" /f >nul 2>&1
 schtasks /delete /tn "TalentaClockInStartup" /f >nul 2>&1
 schtasks /delete /tn "TalentaAttendance" /f >nul 2>&1
 
-:: Every 5 minutes, check and clock in/out if needed
-schtasks /create /tn "TalentaAttendance" /tr "\"%RUN_BAT%\"" /sc minute /mo 5 /rl highest /f
-echo [OK] TalentaAttendance scheduled every 5 minutes
+:: Every 15 minutes, check and clock in/out if needed (interactive so Chrome can start)
+schtasks /create /tn "TalentaAttendance" /tr "\"%RUN_BAT%\"" /sc minute /mo 15 /rl highest /it /f
+echo [OK] TalentaAttendance scheduled every 15 minutes
 
 :: At logon, immediately check
-schtasks /create /tn "TalentaClockInStartup" /tr "\"%RUN_BAT%\"" /sc onlogon /rl highest /f
+schtasks /create /tn "TalentaClockInStartup" /tr "\"%RUN_BAT%\"" /sc onlogon /rl highest /it /f
 echo [OK] TalentaClockInStartup scheduled at logon
 
 echo.
 echo ============================================
 echo  Done! Scheduled tasks:
-echo   - TalentaAttendance    : every 5 minutes
+echo   - TalentaAttendance    : every 15 minutes
 echo   - TalentaClockInStartup: at logon
 echo ============================================
 echo.

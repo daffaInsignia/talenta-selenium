@@ -1,4 +1,7 @@
+import os
+import shutil
 import sys
+import tempfile
 import time
 
 from dotenv import load_dotenv
@@ -36,19 +39,44 @@ def load_config() -> dict[str, str]:
 
 def create_driver() -> webdriver.Chrome:
     options = Options()
-    options.add_argument("--start-maximized")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("prefs", {
-        "credentials_enable_service": False,
-        "profile.password_manager_enabled": False,
-    })
-    if environ.get("HEADLESS", "").lower() in ("1", "true", "yes"):
+    is_headless = environ.get("HEADLESS", "").lower() in ("1", "true", "yes")
+
+    if is_headless:
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("--window-size=1920,1080")
-    return webdriver.Chrome(service=Service(), options=options)
+        options.add_argument(
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/147.0.0.0 Safari/537.36"
+        )
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        temp_dir = tempfile.mkdtemp(prefix="talenta-chrome-")
+        options.add_argument(f"--user-data-dir={temp_dir}")
+    else:
+        options.add_argument("--start-maximized")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option("prefs", {
+            "credentials_enable_service": False,
+            "profile.password_manager_enabled": False,
+        })
+
+    log_path = os.path.join(os.path.dirname(__file__), "chromedriver.log")
+    service = Service(log_output=log_path)
+    driver = webdriver.Chrome(service=service, options=options)
+    if is_headless:
+        driver._temp_profile_dir = temp_dir
+        driver.execute_cdp_cmd(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
+        )
+    return driver
 
 
 def set_geolocation(driver: webdriver.Chrome, lat: str, lng: str) -> None:
@@ -80,7 +108,7 @@ def dismiss_popups(driver: webdriver.Chrome) -> None:
         try:
             for el in driver.find_elements(by, selector):
                 if el.is_displayed():
-                    el.click()
+                    driver.execute_script("arguments[0].click();", el)
                     time.sleep(0.5)
         except Exception:
             continue
@@ -105,7 +133,7 @@ def login(driver: webdriver.Chrome, email: str, password: str) -> None:
     password_field.send_keys(password)
 
     login_btn = wait.until(EC.element_to_be_clickable((By.ID, "new-signin-button")))
-    login_btn.click()
+    driver.execute_script("arguments[0].click();", login_btn)
     print("[login] Credentials submitted, waiting for redirect...", flush=True)
 
     WebDriverWait(driver, 30).until(EC.url_contains("hr.talenta.co"))
@@ -129,11 +157,13 @@ def click_clock_button(driver: webdriver.Chrome, action: str) -> bool:
 
     try:
         btn = wait.until(
-            EC.element_to_be_clickable(
+            EC.presence_of_element_located(
                 (By.XPATH, f"//button[normalize-space()='{button_text}']")
             )
         )
-        btn.click()
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+        time.sleep(1)
+        driver.execute_script("arguments[0].click();", btn)
         print(f"[clock] Clicked '{button_text}'", flush=True)
         time.sleep(3)
 
@@ -163,7 +193,10 @@ def perform_attendance(action: str) -> bool:
             pass
         return False
     finally:
+        temp_dir = getattr(driver, "_temp_profile_dir", None)
         driver.quit()
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

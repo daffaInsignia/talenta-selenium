@@ -6,4 +6,5 @@ venv/
 attendance.db
 screenshots/
 cron.log
+chromedriver.log
 .claude/

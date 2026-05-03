@@ -54,7 +54,7 @@ def run_cycle() -> None:
 
 
 def main() -> None:
-    check_interval = int(os.environ.get("CHECK_INTERVAL_MINUTES", "5"))
+    check_interval = int(os.environ.get("CHECK_INTERVAL_MINUTES", "15"))
     print(f"Talenta Auto Attendance Scheduler", flush=True)
     print(f"Check interval: {check_interval} minutes", flush=True)
     print(f"Press Ctrl+C to stop\n", flush=True)
