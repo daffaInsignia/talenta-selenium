@@ -40,21 +40,28 @@ def load_config() -> dict[str, str]:
 def create_driver() -> webdriver.Chrome:
     options = Options()
     is_headless = environ.get("HEADLESS", "").lower() in ("1", "true", "yes")
+    temp_dir = None
 
     if is_headless:
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
+        options.add_argument("--disable-gpu-sandbox")
+        options.add_argument("--disable-setuid-sandbox")
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-software-rasterizer")
         options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--remote-debugging-pipe")
         options.add_argument("--window-size=1920,1080")
+        
+        # Use a generic but modern user agent
         options.add_argument(
             "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/147.0.0.0 Safari/537.36"
+            "Chrome/130.0.0.0 Safari/537.36"
         )
+        
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         temp_dir = tempfile.mkdtemp(prefix="talenta-chrome-")
         options.add_argument(f"--user-data-dir={temp_dir}")
@@ -69,14 +76,21 @@ def create_driver() -> webdriver.Chrome:
 
     log_path = os.path.join(os.path.dirname(__file__), "chromedriver.log")
     service = Service(log_output=log_path)
-    driver = webdriver.Chrome(service=service, options=options)
-    if is_headless:
-        driver._temp_profile_dir = temp_dir
-        driver.execute_cdp_cmd(
-            "Page.addScriptToEvaluateOnNewDocument",
-            {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
-        )
-    return driver
+    
+    try:
+        driver = webdriver.Chrome(service=service, options=options)
+        if is_headless:
+            driver._temp_profile_dir = temp_dir
+            driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {"source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"},
+            )
+        return driver
+    except Exception as e:
+        print(f"[driver] Failed to initialize: {e}", flush=True)
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
 
 
 def set_geolocation(driver: webdriver.Chrome, lat: str, lng: str) -> None:
@@ -179,24 +193,30 @@ def click_clock_button(driver: webdriver.Chrome, action: str) -> bool:
 def perform_attendance(action: str) -> bool:
     """Full flow: login -> navigate -> click clock button. Returns True if successful."""
     config = load_config()
-    driver = create_driver()
-    set_geolocation(driver, config["LATITUDE"], config["LONGITUDE"])
+    driver = None
     try:
+        driver = create_driver()
+        set_geolocation(driver, config["LATITUDE"], config["LONGITUDE"])
         login(driver, config["TALENTA_EMAIL"], config["TALENTA_PASSWORD"])
         navigate_to_live_attendance(driver)
         return click_clock_button(driver, action)
     except Exception as e:
         print(f"[error] {type(e).__name__}: {e}", flush=True)
-        try:
-            driver.save_screenshot(f"screenshots/error_{action}.png")
-        except Exception:
-            pass
+        if driver:
+            try:
+                driver.save_screenshot(f"screenshots/error_{action}.png")
+            except Exception:
+                pass
         return False
     finally:
-        temp_dir = getattr(driver, "_temp_profile_dir", None)
-        driver.quit()
-        if temp_dir and os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir, ignore_errors=True)
+        if driver:
+            temp_dir = getattr(driver, "_temp_profile_dir", None)
+            try:
+                driver.quit()
+            except Exception:
+                pass
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
